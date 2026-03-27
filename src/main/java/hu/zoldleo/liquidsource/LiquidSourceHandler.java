@@ -55,7 +55,7 @@ public class LiquidSourceHandler implements IFluidHandler, IFluidTank {
 
     @Override
     public @NotNull FluidStack getFluid() {
-        return new FluidStack(LiquidSource.SOURCE, storageGetter.get().getSource());
+        return new FluidStack(LiquidSource.SOURCE, getFluidAmount());
     }
 
     @Override

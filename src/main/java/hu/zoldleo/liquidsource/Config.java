@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 @EventBusSubscriber
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
-    private static final ModConfigSpec.ConfigValue<List<? extends String>> LIQUID_SOURCE_BLOCKS = BUILDER.comment("A list of all the block that source can be pumped out of").defineListAllowEmpty("liquidSourceBlocks", List.of("ars_nouveau:source_jar", "ars_nouveau:creative_source_jar", "endersourcejars:endersourcejar", "ars_additions:ender_source_jar", "allthemodium:allthemodium_source_jar"), Config::validateBlock);
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> LIQUID_SOURCE_BLOCKS = BUILDER.comment("A list of all the block that source can be pumped out of").defineListAllowEmpty("liquidSourceBlocks", List.of("ars_nouveau:source_jar", "ars_nouveau:creative_source_jar", "endersourcejars:endersourcejar", "ars_additions:ender_source_jar", "allthemodium:allthemodium_source_jar", "arseng:me_source_jar"), (obj) -> true);
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     public static Set<Block> liquidSourceBlocks;
@@ -42,9 +42,5 @@ public class Config {
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event) {
         liquidSourceBlocks = LIQUID_SOURCE_BLOCKS.get().stream().map(name -> BuiltInRegistries.BLOCK.get(ResourceLocation.parse(name))).collect(Collectors.toSet());
-    }
-
-    private static boolean validateBlock(final Object obj) {
-        return obj instanceof String name && BuiltInRegistries.BLOCK.containsKey(ResourceLocation.parse(name));
     }
 }
