@@ -20,16 +20,16 @@ package hu.zoldleo.liquidsource;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
 import com.hollingsworth.arsnouveau.api.source.AbstractSourceMachine;
+import com.hollingsworth.arsnouveau.common.block.tile.SourceJarTile;
 import com.hollingsworth.arsnouveau.common.items.data.BlockFillContents;
 import com.hollingsworth.arsnouveau.setup.registry.BlockRegistry;
 import com.hollingsworth.arsnouveau.setup.registry.DataComponentRegistry;
-import net.minecraft.core.component.DataComponentPatch;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.material.EmptyFluid;
 import net.minecraft.world.level.material.Fluid;
@@ -50,8 +50,6 @@ import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
-
-import static hu.zoldleo.liquidsource.Compat.getMESourceHandler;
 
 @EventBusSubscriber
 @Mod(LiquidSource.MODID)
@@ -93,24 +91,47 @@ public class LiquidSource {
     public void registerCapabilities(RegisterCapabilitiesEvent event) {
         event.registerBlock(
                 Capabilities.FluidHandler.BLOCK,
-                (level, pos, state, entity, dir) -> entity instanceof AbstractSourceMachine tile ? new LiquidSourceHandler(tile::getSourceStorage) : Compat.isModLoaded(Compat.ENERGISTIQUE) ? getMESourceHandler(entity) : null,
+                (level, pos, state, entity, dir) -> {
+                    if (Compat.isMEJar(entity))
+                        return Compat.getMESourceHandler(entity);
+                    if (Compat.isAdditionsJar(entity))
+                        return Compat.getEnderSourceHandler(entity);
+                    if (entity instanceof AbstractSourceMachine tile)
+                        return new LiquidSourceHandler(tile::getSourceStorage);
+                    return null;
+                },
                 Config.liquidSourceBlocks.toArray(new Block[0]));
     }
 
     @SubscribeEvent
     public static void fillJar(PlayerInteractEvent.RightClickBlock event) {
-        if (!event.getEntity().isSpectator()) {
-            ItemStack stack = event.getItemStack();
-            if (stack.is(BlockRegistry.SOURCE_JAR.get().asItem()) && event.getLevel().getBlockState(event.getPos()).is(BlockRegistry.SOURCE_JAR.get())) {
-                BlockFillContents.get(stack);
-                CustomData data = stack.get(DataComponents.BLOCK_ENTITY_DATA);
-                DataComponentPatch.Builder builder = DataComponentPatch.builder().set(DataComponentRegistry.BLOCK_FILL_CONTENTS.get(), new BlockFillContents(1000));
-                if (data != null) {
-                    CompoundTag tag = data.copyTag();
-                    builder = builder.set(DataComponents.BLOCK_ENTITY_DATA, CustomData.of(tag));
-                }
-                stack.applyComponents(builder.build());
-            }
+        if (!(event.getLevel().getBlockEntity(event.getPos()) instanceof SourceJarTile jar))
+            return;
+
+        ItemStack stack = event.getItemStack();
+        Player player = event.getEntity();
+        if (!(stack.is(BlockRegistry.SOURCE_JAR.get().asItem())
+                || stack.is(BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("allthemodium", "allthemodium_source_jar"))))
+                || player.isSpectator() || player.isShiftKeyDown() || stack.isEmpty())
+            return;
+
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
+
+        if (!(player instanceof ServerPlayer))
+            return;
+
+        int mana = BlockFillContents.get(stack);
+        mana -= jar.addSource(mana, false);
+
+        if (stack.getCount() == 1) {
+            stack.set(DataComponentRegistry.BLOCK_FILL_CONTENTS, mana == 0 ? null : new BlockFillContents(mana));
+            return;
         }
+
+        ItemStack single = stack.copyWithCount(1);
+        single.set(DataComponentRegistry.BLOCK_FILL_CONTENTS, mana == 0 ? null : new BlockFillContents(mana));
+        if (player.addItem(single))
+            stack.shrink(1);
     }
 }

@@ -81,21 +81,9 @@ public class LiquidSourceHandler implements IFluidHandler, IFluidTank {
         SourceStorage storage = storageGetter.get();
 
         if (fluidAction.simulate())
-            return Math.min(storage.getMaxSource() - storage.getSource(), fluidStack.getAmount());
+            return Math.min(storage.getSourceCapacity() - storage.getSource(), fluidStack.getAmount());
 
-        if (storage.getSource() <= 0) {
-            storage.setSource(Math.min(storage.getMaxSource(), fluidStack.getAmount()));
-            onContentsChanged();
-            return storage.getSource();
-        }
-
-        int filled = storage.getMaxSource() - storage.getSource();
-        if (fluidStack.getAmount() < filled) {
-            storage.receiveSource(fluidStack.getAmount(), false);
-            filled = fluidStack.getAmount();
-        } else {
-            storage.setSource(storage.getMaxSource());
-        }
+        int filled = storage.receiveSource(fluidStack.getAmount(), false);
 
         if (filled > 0)
             onContentsChanged();

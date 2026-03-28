@@ -99,7 +99,6 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     implementation "com.hollingsworth.ars_nouveau:ars_nouveau-1.21.1-${project.ars_version}"
-    compileOnly "gripe._90.arseng:arseng-2.1.1-beta"
     // Example mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"

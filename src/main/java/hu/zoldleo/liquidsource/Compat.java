@@ -18,7 +18,8 @@
 
 package hu.zoldleo.liquidsource;
 
-import hu.zoldleo.liquidsource.mixin.MESourceJarBlockEntityAccessor;
+import com.hollingsworth.arsnouveau.api.source.ISourceCap;
+import com.hollingsworth.arsnouveau.api.source.ISourceTile;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.LoadingModList;
@@ -30,6 +31,7 @@ import java.util.Map;
 
 public class Compat {
     public static final String ENERGISTIQUE = "arseng";
+    public static final String ADDITIONS = "ars_additions";
 
     private static final Map<String, Boolean> MODS = new HashMap<>();
 
@@ -42,19 +44,21 @@ public class Compat {
         return (modList != null && modList.isLoaded(id)) || LoadingModList.get().getModFileById(id) != null;
     }
 
+    public static boolean isMEJar(BlockEntity entity) {
+        return entity != null && entity.getClass().getSimpleName().equals("MESourceJarBlockEntity") && isModLoaded(ENERGISTIQUE);
+    }
+
     public static LiquidSourceHandler getMESourceHandler(BlockEntity entity) {
-        if (entity == null || !entity.getClass().getName().equals("gripe._90.arseng.block.entity.MESourceJarBlockEntity"))
-            return null;
-        MESourceJarBlockEntityAccessor jar = (MESourceJarBlockEntityAccessor)entity;
+        ISourceCap jar = (ISourceCap)entity;
         return new LiquidSourceHandler(null) {
             @Override
             public int getFluidAmount() {
-                return jar.liquidsource$getSource();
+                return jar.getSource();
             }
 
             @Override
             public int getCapacity() {
-                return jar.liquidsource$getSourceCapacity();
+                return jar.getSourceCapacity();
             }
 
             @Override
@@ -63,9 +67,9 @@ public class Compat {
                     return 0;
 
                 if (fluidAction.simulate())
-                    return Math.min(jar.liquidsource$getSourceCapacity() - jar.liquidsource$getSource(), fluidStack.getAmount());
+                    return Math.min(jar.getSourceCapacity() - jar.getSource(), fluidStack.getAmount());
 
-                int filled = jar.liquidsource$receiveSource(fluidStack.getAmount(), false);
+                int filled = jar.receiveSource(fluidStack.getAmount(), false);
 
                 if (filled > 0)
                     onContentsChanged();
@@ -75,10 +79,59 @@ public class Compat {
 
             @Override
             public @NotNull FluidStack drain(int maxDrain, @NotNull FluidAction fluidAction) {
-                int drained = Math.min(jar.liquidsource$getSource(), maxDrain);
+                int drained = Math.min(jar.getSource(), maxDrain);
 
                 if (fluidAction.execute() && drained > 0) {
-                    drained = jar.liquidsource$extractSource(drained, false);
+                    drained = jar.extractSource(drained, false);
+                    onContentsChanged();
+                }
+
+                return new FluidStack(LiquidSource.SOURCE, drained);
+            }
+
+            @Override
+            protected void onContentsChanged() {
+            }
+        };
+    }
+
+    public static boolean isAdditionsJar(BlockEntity entity) {
+        return entity != null && entity.getClass().getSimpleName().equals("EnderSourceJarTile") && isModLoaded(ADDITIONS);
+    }
+
+    public static LiquidSourceHandler getEnderSourceHandler(BlockEntity entity) {
+        ISourceTile jar = (ISourceTile)entity;
+        return new LiquidSourceHandler(null) {
+            @Override
+            public int getFluidAmount() {
+                return jar.getSource();
+            }
+
+            @Override
+            public int getCapacity() {
+                return jar.getMaxSource();
+            }
+
+            @Override
+            public int fill(@NotNull FluidStack fluidStack, @NotNull FluidAction fluidAction) {
+                if (fluidStack.isEmpty() || !isFluidValid(0, fluidStack))
+                    return 0;
+
+                int toInsert = Math.min(jar.getMaxSource() - jar.getSource(), fluidStack.getAmount());
+                if (fluidAction.execute() && toInsert > 0) {
+                    jar.setSource(jar.getSource() + toInsert);
+                    onContentsChanged();
+                }
+
+                return toInsert;
+            }
+
+            @Override
+            public @NotNull FluidStack drain(int maxDrain, @NotNull FluidAction fluidAction) {
+                int drained = Math.min(jar.getSource(), maxDrain);
+
+                if (fluidAction.execute() && drained > 0) {
+                    jar.setSource(jar.getSource() - drained);
                     onContentsChanged();
                 }
 
