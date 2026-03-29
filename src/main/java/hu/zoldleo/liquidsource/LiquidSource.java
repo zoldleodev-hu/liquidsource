@@ -20,17 +20,20 @@ package hu.zoldleo.liquidsource;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
 import com.hollingsworth.arsnouveau.api.source.AbstractSourceMachine;
+import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.common.block.tile.SourceJarTile;
-import com.hollingsworth.arsnouveau.common.items.data.BlockFillContents;
 import com.hollingsworth.arsnouveau.setup.registry.BlockRegistry;
-import com.hollingsworth.arsnouveau.setup.registry.DataComponentRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.*;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.material.EmptyFluid;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.bus.api.IEventBus;
@@ -42,6 +45,8 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.common.SoundActions;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -57,13 +62,20 @@ public class LiquidSource {
     public static final String MODID = "liquidsource";
     private static final DeferredRegister<Fluid> FLUIDS = DeferredRegister.create(BuiltInRegistries.FLUID, MODID);
     private static final DeferredRegister<FluidType> FLUID_TYPES = DeferredRegister.create(NeoForgeRegistries.Keys.FLUID_TYPES, MODID);
+    private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(BuiltInRegistries.ITEM, MODID);
+
     public static final DeferredHolder<Fluid, Fluid> SOURCE = FLUIDS.register("source", () -> new EmptyFluid() {
         @Override
         public @NotNull FluidType getFluidType() {
             return SOURCE_TYPE.get();
         }
+
+        @Override
+        public @NotNull Item getBucket() {
+            return SOURCE_BUCKET.get();
+        }
     });
-    public static final DeferredHolder<FluidType, FluidType> SOURCE_TYPE = FLUID_TYPES.register("source", () -> new FluidType(FluidType.Properties.create()) {
+    public static final DeferredHolder<FluidType, FluidType> SOURCE_TYPE = FLUID_TYPES.register("source", () -> new FluidType(FluidType.Properties.create().sound(SoundActions.BUCKET_FILL, SoundEvents.BUCKET_FILL).sound(SoundActions.BUCKET_EMPTY, SoundEvents.BUCKET_EMPTY)) {
         @SuppressWarnings("all")
         @Override
         public void initializeClient(@NotNull Consumer<IClientFluidTypeExtensions> consumer) {
@@ -80,12 +92,21 @@ public class LiquidSource {
             });
         }
     });
+    public static final DeferredHolder<Item, BucketItem> SOURCE_BUCKET = ITEMS.register("source_bucket", () -> new BucketItem(SOURCE.get(), new Item.Properties().stacksTo(1)));
 
     public LiquidSource(IEventBus bus, ModContainer container) {
         FLUIDS.register(bus);
         FLUID_TYPES.register(bus);
+        ITEMS.register(bus);
+
+        bus.addListener(this::addCreative);
         bus.addListener(this::registerCapabilities);
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+    }
+
+    private void addCreative(BuildCreativeModeTabContentsEvent event) {
+        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES)
+            event.accept(new ItemStack(SOURCE_BUCKET));
     }
 
     public void registerCapabilities(RegisterCapabilitiesEvent event) {
@@ -95,7 +116,7 @@ public class LiquidSource {
                     if (Compat.isMEJar(entity))
                         return Compat.getMESourceHandler(entity);
                     if (Compat.isAdditionsJar(entity))
-                        return Compat.getEnderSourceHandler(entity);
+                        return Compat.getAdditionsSourceHandler(entity);
                     if (entity instanceof AbstractSourceMachine tile)
                         return new LiquidSourceHandler(tile::getSourceStorage);
                     return null;
@@ -105,33 +126,177 @@ public class LiquidSource {
 
     @SubscribeEvent
     public static void fillJar(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel().getBlockEntity(event.getPos()) instanceof SourceJarTile jar))
-            return;
-
         ItemStack stack = event.getItemStack();
         Player player = event.getEntity();
-        if (!(stack.is(BlockRegistry.SOURCE_JAR.get().asItem())
-                || stack.is(BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("allthemodium", "allthemodium_source_jar"))))
-                || player.isSpectator() || player.isShiftKeyDown() || stack.isEmpty())
+
+        if (player.isSpectator() || player.isShiftKeyDown() || stack.isEmpty())
             return;
 
-        event.setCanceled(true);
-        event.setCancellationResult(InteractionResult.SUCCESS);
+        BlockEntity blockEntity = event.getLevel().getBlockEntity(event.getPos());
 
-        if (!(player instanceof ServerPlayer))
-            return;
-
-        int mana = BlockFillContents.get(stack);
-        mana -= jar.addSource(mana, false);
-
-        if (stack.getCount() == 1) {
-            stack.set(DataComponentRegistry.BLOCK_FILL_CONTENTS, mana == 0 ? null : new BlockFillContents(mana));
+        if (blockEntity instanceof SourceJarTile jar) {
+            if (handleCreativeJar(jar, stack, player) || handleBucket(jar, stack, player, event.getHand())) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.SUCCESS);
+            }
             return;
         }
 
-        ItemStack single = stack.copyWithCount(1);
-        single.set(DataComponentRegistry.BLOCK_FILL_CONTENTS, mana == 0 ? null : new BlockFillContents(mana));
-        if (player.addItem(single))
+        if (Compat.isMEJar(blockEntity)) {
+            ISourceCap jar = (ISourceCap)blockEntity;
+            if (handleMECreativeJar(jar, stack, player) || handleMEBucket(jar, stack, player, event.getHand())) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.SUCCESS);
+            }
+        }
+    }
+
+    // ars_nouveau:creative_source_jar
+    private static boolean handleCreativeJar(SourceJarTile jar, ItemStack stack, Player player) {
+        if (!stack.is(BlockRegistry.CREATIVE_SOURCE_JAR.get().asItem()))
+            return false; // Item is not a creative source jar, don't cancel
+
+        if (!(player instanceof ServerPlayer))
+            return true; // Client-side, cancel
+
+        if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR)) {
+            jar.setSource(Compat.ADDITIONSMAXSOURCE);
+            return true; // Additions jar handled, cancel
+        }
+
+        jar.addSource(1_000_000, false); // Creative jar capacity is 1m
+
+        player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+        return true; // Single item handled, cancel
+    }
+
+    // minecraft:bucket, liquidsourcejars:source_bucket
+    @SuppressWarnings("all")
+    private static boolean handleBucket(SourceJarTile jar, ItemStack stack, Player player, InteractionHand hand) {
+        if (stack.is(Items.BUCKET)) {
+            if (!(player instanceof ServerPlayer))
+                return true; // Client-side, cancel
+
+            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && jar.getSource() >= 1000)
+                jar.setSource(jar.getSource() - 1000); // Additions jar
+            else if (jar.removeSource(1000, true) == 1000)
+                jar.removeSource(1000, false); // "Normal jars"
+            else
+                return true; // Couldn't extract source, still cancel
+
+            player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_FILL, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+            if (player.hasInfiniteMaterials())
+                return true;
+
+            if (stack.getCount() == 1) {
+                player.setItemInHand(hand, new ItemStack(SOURCE_BUCKET));
+                return true; // Single item handled, cancel
+            }
+
             stack.shrink(1);
+            player.addItem(new ItemStack(SOURCE_BUCKET));
+
+            return true; // Multiple items handled, cancel
+        }
+
+        if (stack.is(SOURCE_BUCKET)) {
+            if (!(player instanceof ServerPlayer))
+                return true; // Client-side, cancel
+
+            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && jar.getSource() <= Compat.ADDITIONSMAXSOURCE - 1000)
+                jar.setSource(jar.getSource() + 1000); // Additions jar
+            else if (jar.addSource(1000, true) == 1000)
+                jar.addSource(1000, false); // "Normal jars"
+            else
+                return true; // Couldn't insert source, still cancel
+
+            player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+            if (player.hasInfiniteMaterials())
+                return true;
+
+            if (stack.getCount() == 1) {
+                player.setItemInHand(hand, new ItemStack(Items.BUCKET));
+                return true; // Single item handled, cancel
+            }
+
+            stack.shrink(1);
+            player.addItem(new ItemStack(Items.BUCKET));
+
+            return true; // Multiple item handled, cancel
+        }
+
+        return false; // Item is not a bucket, don't cancel
+    }
+
+    // ars_nouveau:creative_source_jar
+    private static boolean handleMECreativeJar(ISourceCap jar, ItemStack stack, Player player) {
+        if (!stack.is(BlockRegistry.CREATIVE_SOURCE_JAR.get().asItem()))
+            return false; // Item is not a creative source jar, don't cancel
+
+        if (!(player instanceof ServerPlayer))
+            return true; // Client-side, cancel
+
+        jar.receiveSource(1_000_000, false); // Creative jar capacity is 1m
+
+        player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+        return true; // Single item handled, cancel
+    }
+
+    // minecraft:bucket, liquidsourcejars:source_bucket
+    @SuppressWarnings("all")
+    private static boolean handleMEBucket(ISourceCap jar, ItemStack stack, Player player, InteractionHand hand) {
+        if (stack.is(Items.BUCKET)) {
+            if (!(player instanceof ServerPlayer))
+                return true; // Client-side, cancel
+
+            if (jar.extractSource(1000, true) != 1000)
+                return true; // Couldn't extract source, still cancel
+            jar.extractSource(1000, false);
+
+            player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_FILL, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+            if (player.hasInfiniteMaterials())
+                return true;
+
+            if (stack.getCount() == 1) {
+                player.setItemInHand(hand, new ItemStack(SOURCE_BUCKET));
+                return true; // Single item handled, cancel
+            }
+
+            stack.shrink(1); // Not considering creative mode
+            player.addItem(new ItemStack(SOURCE_BUCKET));
+
+            return true; // Multiple items handled, cancel
+        }
+
+        if (stack.is(SOURCE_BUCKET)) {
+            if (!(player instanceof ServerPlayer))
+                return true; // Client-side, cancel
+
+            if (jar.receiveSource(1000, true) != 1000)
+                return true; // Couldn't insert source, still cancel
+            jar.receiveSource(1000, false);
+
+            player.level().playSound(null, player.getX(), player.getY() + 0.5, player.getZ(), SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0F, 1.0F);
+
+            if (player.hasInfiniteMaterials())
+                return true;
+
+            if (stack.getCount() == 1) {
+                player.setItemInHand(hand, new ItemStack(Items.BUCKET));
+                return true; // Single item handled, cancel
+            }
+
+            stack.shrink(1); // Not considering creative mode
+            player.addItem(new ItemStack(Items.BUCKET));
+
+            return true; // Multiple item handled, cancel
+        }
+
+        return false; // Item is not a bucket, don't cancel
     }
 }

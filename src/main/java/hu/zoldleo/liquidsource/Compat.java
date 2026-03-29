@@ -20,6 +20,7 @@ package hu.zoldleo.liquidsource;
 
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.api.source.ISourceTile;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.LoadingModList;
@@ -32,6 +33,12 @@ import java.util.Map;
 public class Compat {
     public static final String ENERGISTIQUE = "arseng";
     public static final String ADDITIONS = "ars_additions";
+    //public static final String ATM = "allthemodium";
+    //public static final String ENDERJARS = "allthemodium";
+
+    public static final ResourceLocation ADDITIONSJAR = ResourceLocation.fromNamespaceAndPath(ADDITIONS, "ender_source_jar");
+
+    public static final int ADDITIONSMAXSOURCE = 10_000;
 
     private static final Map<String, Boolean> MODS = new HashMap<>();
 
@@ -58,7 +65,7 @@ public class Compat {
 
             @Override
             public int getCapacity() {
-                return jar.getSourceCapacity();
+                return jar.getSourceCapacity() + jar.getSource(); // ArsEng gives the remaining space as capacity
             }
 
             @Override
@@ -67,7 +74,7 @@ public class Compat {
                     return 0;
 
                 if (fluidAction.simulate())
-                    return Math.min(jar.getSourceCapacity() - jar.getSource(), fluidStack.getAmount());
+                    return Math.min(jar.getSourceCapacity(), fluidStack.getAmount()); // ArsEng gives the remaining space as capacity
 
                 int filled = jar.receiveSource(fluidStack.getAmount(), false);
 
@@ -99,7 +106,7 @@ public class Compat {
         return entity != null && entity.getClass().getSimpleName().equals("EnderSourceJarTile") && isModLoaded(ADDITIONS);
     }
 
-    public static LiquidSourceHandler getEnderSourceHandler(BlockEntity entity) {
+    public static LiquidSourceHandler getAdditionsSourceHandler(BlockEntity entity) {
         ISourceTile jar = (ISourceTile)entity;
         return new LiquidSourceHandler(null) {
             @Override
