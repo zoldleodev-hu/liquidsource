@@ -19,6 +19,7 @@
 package hu.zoldleo.liquidsource;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
+import com.hollingsworth.arsnouveau.api.registry.GlyphRegistry;
 import com.hollingsworth.arsnouveau.api.source.AbstractSourceMachine;
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.common.block.tile.SourceJarTile;
@@ -31,7 +32,11 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.*;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.material.EmptyFluid;
@@ -98,6 +103,8 @@ public class LiquidSource {
         FLUIDS.register(bus);
         FLUID_TYPES.register(bus);
         ITEMS.register(bus);
+
+        GlyphRegistry.registerSpell(TransportFluidGlyph.INSTANCE);
 
         bus.addListener(this::addCreative);
         bus.addListener(this::registerCapabilities);
