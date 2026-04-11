@@ -86,18 +86,37 @@ public class LiquidSource {
         public void initializeClient(@NotNull Consumer<IClientFluidTypeExtensions> consumer) {
             consumer.accept(new IClientFluidTypeExtensions() {
                 @Override
-                public int getTintColor() {
-                    return IClientFluidTypeExtensions.super.getTintColor();
-                }
-
-                @Override
                 public ResourceLocation getStillTexture() {
                     return ResourceLocation.fromNamespaceAndPath(ArsNouveau.MODID, "block/mana_still");
                 }
             });
         }
     });
+    public static final DeferredHolder<Fluid, Fluid> DENSE_SOURCE = FLUIDS.register("dense_source", () -> new EmptyFluid() {
+        @Override
+        public @NotNull FluidType getFluidType() {
+            return DENSE_SOURCE_TYPE.get();
+        }
+
+        @Override
+        public @NotNull Item getBucket() {
+            return DENSE_SOURCE_BUCKET.get();
+        }
+    });
+    public static final DeferredHolder<FluidType, FluidType> DENSE_SOURCE_TYPE = FLUID_TYPES.register("dense_source", () -> new FluidType(FluidType.Properties.create().sound(SoundActions.BUCKET_FILL, SoundEvents.BUCKET_FILL).sound(SoundActions.BUCKET_EMPTY, SoundEvents.BUCKET_EMPTY)) {
+        @SuppressWarnings("all")
+        @Override
+        public void initializeClient(@NotNull Consumer<IClientFluidTypeExtensions> consumer) {
+            consumer.accept(new IClientFluidTypeExtensions() {
+                @Override
+                public ResourceLocation getStillTexture() {
+                    return ResourceLocation.fromNamespaceAndPath(MODID, "block/dense_source");
+                }
+            });
+        }
+    });
     public static final DeferredHolder<Item, BucketItem> SOURCE_BUCKET = ITEMS.register("source_bucket", () -> new BucketItem(SOURCE.get(), new Item.Properties().stacksTo(1)));
+    public static final DeferredHolder<Item, BucketItem> DENSE_SOURCE_BUCKET = ITEMS.register("dense_source_bucket", () -> new BucketItem(DENSE_SOURCE.get(), new Item.Properties().stacksTo(1)));
 
     public LiquidSource(IEventBus bus, ModContainer container) {
         FLUIDS.register(bus);
@@ -112,8 +131,10 @@ public class LiquidSource {
     }
 
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES)
+        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(new ItemStack(SOURCE_BUCKET));
+            event.accept(new ItemStack(DENSE_SOURCE_BUCKET));
+        }
     }
 
     public void registerCapabilities(RegisterCapabilitiesEvent event) {
@@ -178,16 +199,16 @@ public class LiquidSource {
         return true; // Single item handled, cancel
     }
 
-    // minecraft:bucket, liquidsourcejars:source_bucket
+    // minecraft:bucket, any source or dense source bucket
     @SuppressWarnings("all")
     private static boolean handleBucket(SourceJarTile jar, ItemStack stack, Player player, InteractionHand hand) {
         if (stack.is(Items.BUCKET)) {
             if (!(player instanceof ServerPlayer))
                 return true; // Client-side, cancel
 
-            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && jar.getSource() >= 1000)
+            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && (jar.getSource() >= 1000) || player.hasInfiniteMaterials())
                 jar.setSource(jar.getSource() - 1000); // Additions jar
-            else if (jar.removeSource(1000, true) == 1000)
+            else if (jar.removeSource(1000, true) == 1000 || player.hasInfiniteMaterials())
                 jar.removeSource(1000, false); // "Normal jars"
             else
                 return true; // Couldn't extract source, still cancel
@@ -208,14 +229,16 @@ public class LiquidSource {
             return true; // Multiple items handled, cancel
         }
 
-        if (stack.is(SOURCE_BUCKET)) {
+        if (stack.getItem() instanceof BucketItem bucket && (bucket.content.isSame(SOURCE.get()) || bucket.content.isSame(DENSE_SOURCE.get()))) {
             if (!(player instanceof ServerPlayer))
                 return true; // Client-side, cancel
 
-            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && jar.getSource() <= Compat.ADDITIONSMAXSOURCE - 1000)
-                jar.setSource(jar.getSource() + 1000); // Additions jar
-            else if (jar.addSource(1000, true) == 1000)
-                jar.addSource(1000, false); // "Normal jars"
+            int toFill = bucket.content.isSame(DENSE_SOURCE.get()) ? 10_000 : 1000;
+
+            if (jar.getType() == BuiltInRegistries.BLOCK_ENTITY_TYPE.get(Compat.ADDITIONSJAR) && (jar.getSource() <= Compat.ADDITIONSMAXSOURCE - toFill || player.hasInfiniteMaterials()))
+                jar.setSource(jar.getSource() + toFill); // Additions jar
+            else if (jar.addSource(toFill, true) == toFill || player.hasInfiniteMaterials())
+                jar.addSource(toFill, false); // "Normal jars"
             else
                 return true; // Couldn't insert source, still cancel
 

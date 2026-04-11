@@ -70,7 +70,7 @@ public class LiquidSourceHandler implements IFluidHandler, IFluidTank {
 
     @Override
     public boolean isFluidValid(FluidStack fluidStack) {
-        return fluidStack.is(LiquidSource.SOURCE);
+        return fluidStack.is(LiquidSource.SOURCE) || fluidStack.is(LiquidSource.DENSE_SOURCE);
     }
 
     @Override
@@ -78,17 +78,19 @@ public class LiquidSourceHandler implements IFluidHandler, IFluidTank {
         if (fluidStack.isEmpty() || !isFluidValid(0, fluidStack))
             return 0;
 
+        int toFill = fluidStack.is(LiquidSource.DENSE_SOURCE) ? fluidStack.getAmount() * 10 : fluidStack.getAmount();
+
         SourceStorage storage = storageGetter.get();
 
         if (fluidAction.simulate())
-            return Math.min(storage.getSourceCapacity() - storage.getSource(), fluidStack.getAmount());
+            return Math.min(storage.getSourceCapacity() - storage.getSource(), toFill);
 
-        int filled = storage.receiveSource(fluidStack.getAmount(), false);
+        int filled = storage.receiveSource(toFill, false);
 
         if (filled > 0)
             onContentsChanged();
 
-        return filled;
+        return fluidStack.is(LiquidSource.DENSE_SOURCE) ? filled / 10 : filled;
     }
 
     @Override

@@ -1,5 +1,7 @@
 {
+  "fluid_type.liquidsource.dense_source": "Dense Source",
   "fluid_type.liquidsource.source": "Source",
+  "item.liquidsource.dense_source_bucket": "Dense Source Bucket",
   "item.liquidsource.source_bucket": "Source Bucket",
   "liquidsource.glyph_name.glyph_transport_fluid": "Transport Fluid",
   "liquidsource.glyph_desc.glyph_transport_fluid": "Places fluids from the casters inventory. If cast by a player, this spell will place fluids from the hot bar first. Extract causes the fluid to be picked up instead, and Sensitive will stop the spell from picking up or placing fluid as blocks."

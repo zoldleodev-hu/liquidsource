@@ -1,0 +1,13 @@
+{
+  "type": "ars_nouveau:enchanting_apparatus",
+  "keepNbtOfReagent": true,
+  "pedestalItems": [],
+  "reagent": {
+    "item": "liquidsource:source_bucket"
+  },
+  "result": {
+    "count": 1,
+    "id": "liquidsource:dense_source_bucket"
+  },
+  "sourceCost": 9000
+}
